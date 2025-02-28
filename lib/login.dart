@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 import 'home_screen.dart';
+import 'auth_service.dart';
 
 class LoginScreen extends StatelessWidget {
   final TextEditingController _usernameController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
+
+  LoginScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -47,16 +50,26 @@ class LoginScreen extends StatelessWidget {
                   ),
                   const SizedBox(height: 20),
                   ElevatedButton(
-                    onPressed: () {
-                      if (_usernameController.text == 'Test' &&
-                          _passwordController.text == '12345') {
-                        Navigator.pushReplacement(
-                          context,
-                          MaterialPageRoute(builder: (context) => HomeScreen()),
+                    onPressed: () async {
+                      final authService = AuthService();
+                      try {
+                        bool success = await authService.login(
+                          _usernameController.text,
+                          _passwordController.text,
                         );
-                      } else {
+                        if (success) {
+                          Navigator.pushReplacement(
+                            context,
+                            MaterialPageRoute(builder: (context) => HomeScreen()),
+                          );
+                        } else {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('Usuário ou senha incorretos!')),
+                          );
+                        }
+                      } catch (e) {
                         ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('Usuário ou senha incorretos!')),
+                          SnackBar(content: Text('Erro ao fazer login: $e')),
                         );
                       }
                     },
