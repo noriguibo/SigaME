@@ -1,7 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:dio/dio.dart';
+import 'package:dio_cookie_manager/dio_cookie_manager.dart';
+import 'package:cookie_jar/cookie_jar.dart';
+import 'package:html/parser.dart' as html;
 import 'package:http/http.dart' as http;
-import 'dart:convert';
-import 'home_screen.dart';
+import 'package:beautiful_soup_dart/beautiful_soup.dart';
+import 'home_screen.dart'; // Import HomeScreen
+import 'package:flutter/foundation.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -11,126 +16,108 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
+  final _dio = Dio();
+  final cookieJar = CookieJar();
+  
   final TextEditingController _usernameController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
   bool _isLoading = false;
 
-  Future<void> _login(String username, String password) async {
-  final url = Uri.parse('https://siga.cps.sp.gov.br/aluno/login.aspx'); 
+  Future<void> _login() async {
+    setState(() {
+      _isLoading = true;
+    });
 
-  // Extract GXState from the hidden field
-  String gxState = ''; // Initialize the variable
-
-  try {
-    // Send the initial GET request to retrieve GXState (including cookies and tokens)
-    final response = await http.get(url);
-
-    if (response.statusCode == 200) {
-      // You need to extract GXState from the body of the response
-      final document = html_parser.parse(response.body);
-      final gxStateElement = document.querySelector('input[name="GXState"]');
-
-      if (gxStateElement != null) {
-        gxState = gxStateElement.attributes['value'] ?? '';
-      } else {
-        throw Exception('GXState not found');
-      }
-
-      // Prepare the POST data with the login credentials and extracted GXState
-      final response = await http.post(
-        url,
-        body: {
-          'vSIS_USUARIOID': username,
-          'vSIS_USUARIOSENHA': password,
-          'BTCONFIRMA': 'Confirmar',
-          'GXState': gxState,  // Include the GXState value here
+    try {
+      /*
+      * Login Request
+      */
+      final loginResponse = await _dio.post(
+        'https://siga.cps.sp.gov.br/aluno/login.aspx',
+        data: {
+          'username': _usernameController.text,
+          'password': _passwordController.text,
         },
+        options: Options(
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+          },
+        ),
       );
 
-      if (response.statusCode == 200) {
-        // Handle successful login (e.g., check the response body for confirmation)
-        print('Login successful!');
+      if (loginResponse.statusCode == 200) {
+        var url = Uri.parse('https://siga.cps.sp.gov.br/aluno/home.aspx');
+        var response = await http.get(url);
+
+        BeautifulSoup bs = BeautifulSoup(response.body);
+
+        var studentName = bs.find('*', id: 'span_MPW0041vPRO_PESSOALNOME')?.text ?? 'Unknown';
+        var studentEmail = bs.find('*', id: 'span_MPW0041vACD_ALUNOCURSOREGISTROACADEMICOCURSO')?.text ?? 'Unknown';
+        var studentID = bs.find('*', id: 'span_MPW0041vINSTITUCIONALFATEC')?.text ?? 'Unknown';
+
+        if (kDebugMode) {
+          print('Student Name: $studentName');
+          print('Student Email: $studentEmail');
+          print('Student ID: $studentID');
+        }
+        
+        /*
+        * Login Successful, go to Home_Screen and send information
+        */
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (context) => HomeScreen(
+              studentName: studentName.toString(),
+              studentEmail: studentEmail.toString(),
+              studentID: studentID.toString(),
+            ),
+          ),
+        );
       } else {
-        print('Login failed');
+        if (kDebugMode) {
+          print('Login failed: ${loginResponse.statusCode}');
+        }
       }
+    } catch (e) {
+      if (kDebugMode) {
+        print('Error: $e'); //Other Exceptions
+      }
+    } finally {
+      setState(() {
+        _isLoading = false;
+      });
     }
-  } catch (e) {
-    print('Error during login: $e');
   }
-}
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Stack(
-        children: [
-          Positioned.fill(
-            child: Image.asset(
-              'assets/background.png',
-              fit: BoxFit.cover,
+      appBar: AppBar(
+        title: Text('Login'),
+      ),
+      body: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          children: [
+            TextField(
+              controller: _usernameController,
+              decoration: InputDecoration(labelText: 'Username'),
             ),
-          ),
-          Center(
-            child: Container(
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.9),
-                borderRadius: BorderRadius.circular(20),
-              ),
-              width: 300,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Image.asset('assets/logo.png', height: 80),
-                  const SizedBox(height: 20),
-                  TextField(
-                    controller: _usernameController,
-                    decoration: const InputDecoration(
-                      labelText: 'Usuário',
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  TextField(
-                    controller: _passwordController,
-                    decoration: const InputDecoration(
-                      labelText: 'Senha',
-                      border: OutlineInputBorder(),
-                    ),
-                    obscureText: true,
-                  ),
-                  const SizedBox(height: 20),
-                  _isLoading
-                      ? const CircularProgressIndicator()
-                      : 
-  ElevatedButton(
-  onPressed: () async {
-    final username = _usernameController.text;
-    final password = _passwordController.text;
-
-    if (username.isNotEmpty && password.isNotEmpty) {
-      // Call _login and await it because it returns a Future
-      await _login(username, password);
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Usuário ou senha não podem estar vazios!')),
-      );
-    }
-  },
-  style: ElevatedButton.styleFrom(
-    backgroundColor: Colors.grey,
-    padding: const EdgeInsets.symmetric(horizontal: 50, vertical: 15),
-  ),
-  child: const Text(
-    'Confirmar',
-    style: TextStyle(color: Colors.white, fontSize: 16),
-  ),
-),
-                ],
-              ),
+            TextField(
+              controller: _passwordController,
+              obscureText: true,
+              decoration: InputDecoration(labelText: 'Password'),
             ),
-          ),
-        ],
+            SizedBox(height: 20),
+            _isLoading
+                ? CircularProgressIndicator()
+                : ElevatedButton(
+                    onPressed: _login,
+                    child: Text('Login'),
+                  ),
+          ],
+        ),
       ),
     );
   }

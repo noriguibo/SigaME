@@ -2,7 +2,16 @@ import 'package:flutter/material.dart';
 import 'login.dart';
 
 class HomeScreen extends StatelessWidget {
-  const HomeScreen({super.key});
+  final String studentName;
+  final String studentEmail;
+  final String studentID;
+
+  const HomeScreen({
+    super.key,
+    required this.studentName,
+    required this.studentEmail,
+    required this.studentID,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -25,9 +34,9 @@ class HomeScreen extends StatelessWidget {
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('Renan Leite Gabriel', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                        Text('renan.gabriel@inf.ufsc.br'),
-                        Text('00304223314'),
+                        Text(studentName, style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                        Text(studentEmail),
+                        Text(studentID),
                       ],
                     ),
                     IconButton(
