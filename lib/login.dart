@@ -1,12 +1,12 @@
-import 'package:flutter/material.dart';
 import 'package:dio/dio.dart';
 import 'package:dio_cookie_manager/dio_cookie_manager.dart';
 import 'package:cookie_jar/cookie_jar.dart';
+import 'package:flutter/material.dart';
 import 'package:html/parser.dart' as html;
-import 'package:http/http.dart' as http;
 import 'package:beautiful_soup_dart/beautiful_soup.dart';
-import 'home_screen.dart'; // Import HomeScreen
+import 'home_screen.dart';
 import 'package:flutter/foundation.dart';
+import 'dart:convert';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -16,12 +16,24 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  final _dio = Dio();
-  final cookieJar = CookieJar();
-  
+  final Dio _dio = Dio(BaseOptions(
+    followRedirects: false,
+    validateStatus: (status) {
+      return status != null && (status < 400 || status == 303);
+    },
+  ));
+
+  final CookieJar _cookieJar = CookieJar();
+
   final TextEditingController _usernameController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
   bool _isLoading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _dio.interceptors.add(CookieManager(_cookieJar));
+  }
 
   Future<void> _login() async {
     setState(() {
@@ -29,59 +41,101 @@ class _LoginScreenState extends State<LoginScreen> {
     });
 
     try {
-      /*
-      * Login Request
-      */
+      final loginPageResponse =
+          await _dio.get('https://siga.cps.sp.gov.br/aluno/login.aspx');
+      if (loginPageResponse.statusCode != 200) {
+        throw Exception("Failed to load login page.");
+      }
+
+      final document = html.parse(loginPageResponse.data);
+      final gxStateElement = document.querySelector('input[name="GXState"]');
+      final gxStateValue = gxStateElement?.attributes['value'] ?? '';
+
+      if (gxStateValue.isEmpty) {
+        throw Exception("Failed to extract GXState.");
+      }
+
+      // Decode the GXState JSON string
+      Map<String, dynamic> gxStateJson = jsonDecode(gxStateValue);
+
+      // Add the event name and the missing parameters.
+      gxStateJson["_EventName"] = "E'EVT_CONFIRMAR'.";
+      gxStateJson["_MODE"] = "";
+      gxStateJson["Mode"] = "";
+      gxStateJson["IsModified"] = "1";
+
+      // Encode the modified GXState back to a JSON string
+      final modifiedGxStateValue = jsonEncode(gxStateJson);
+
       final loginResponse = await _dio.post(
         'https://siga.cps.sp.gov.br/aluno/login.aspx',
         data: {
-          'username': _usernameController.text,
-          'password': _passwordController.text,
+          'vSIS_USUARIOID': _usernameController.text,
+          'vSIS_USUARIOSENHA': _passwordController.text,
+          'BTCONFIRMA': 'Confirmar',
+          'GXState': modifiedGxStateValue, // Use the modified GXState
         },
         options: Options(
           headers: {
             'Content-Type': 'application/x-www-form-urlencoded',
+            'Referer': 'https://siga.cps.sp.gov.br/aluno/login.aspx',
+            'User-Agent':
+                'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
           },
         ),
       );
 
-      if (loginResponse.statusCode == 200) {
-        var url = Uri.parse('https://siga.cps.sp.gov.br/aluno/home.aspx');
-        var response = await http.get(url);
+      print('Login Response Body: ${loginResponse.data}');
 
-        BeautifulSoup bs = BeautifulSoup(response.body);
+      final cookies = await _cookieJar.loadForRequest(
+          Uri.parse('https://siga.cps.sp.gov.br/aluno/login.aspx'));
+      print('Saved Cookies: $cookies');
 
-        var studentName = bs.find('*', id: 'span_MPW0041vPRO_PESSOALNOME')?.text ?? 'Unknown';
-        var studentEmail = bs.find('*', id: 'span_MPW0041vACD_ALUNOCURSOREGISTROACADEMICOCURSO')?.text ?? 'Unknown';
-        var studentID = bs.find('*', id: 'span_MPW0041vINSTITUCIONALFATEC')?.text ?? 'Unknown';
+      String? redirectUrl = loginResponse.headers['location']?.first;
 
-        if (kDebugMode) {
-          print('Student Name: $studentName');
-          print('Student Email: $studentEmail');
-          print('Student ID: $studentID');
-        }
-        
-        /*
-        * Login Successful, go to Home_Screen and send information
-        */
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(
-            builder: (context) => HomeScreen(
-              studentName: studentName.toString(),
-              studentEmail: studentEmail.toString(),
-              studentID: studentID.toString(),
-            ),
-          ),
-        );
-      } else {
-        if (kDebugMode) {
-          print('Login failed: ${loginResponse.statusCode}');
-        }
+      if (loginResponse.statusCode == 303) {
+        print('Redirect URL: $redirectUrl');
       }
+
+      if (loginResponse.statusCode == 303 && redirectUrl != null) {
+          // Construct the full redirect URL
+          final fullRedirectUrl = 'https://siga.cps.sp.gov.br/aluno/$redirectUrl';
+
+          final redirectedResponse = await _dio.get(
+            fullRedirectUrl,
+            options: Options(
+              headers: {
+                'Referer': 'https://siga.cps.sp.gov.br/aluno/login.aspx',
+              },
+            ),
+          );
+
+          if (redirectedResponse.statusCode == 200) {
+            print('✅ Successfully followed the redirect to home.');
+          } else {
+            throw Exception("Failed to follow redirect.");
+          }
+      }
+
+      final homeResponse =
+          await _dio.get('https://siga.cps.sp.gov.br/aluno/home.aspx');
+      if (!homeResponse.data.contains('span_MPW0041vPRO_PESSOALNOME')) {
+        throw Exception("❌ Login failed! Still on login page.");
+      }
+
+      BeautifulSoup bs = BeautifulSoup(homeResponse.data);
+
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (context) => HomeScreen(
+            bs: bs,
+          ),
+        ),
+      );
     } catch (e) {
       if (kDebugMode) {
-        print('Error: $e'); //Other Exceptions
+        print('Error: $e');
       }
     } finally {
       setState(() {
@@ -94,7 +148,7 @@ class _LoginScreenState extends State<LoginScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('Login'),
+        title: const Text('Login'),
       ),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
@@ -102,19 +156,19 @@ class _LoginScreenState extends State<LoginScreen> {
           children: [
             TextField(
               controller: _usernameController,
-              decoration: InputDecoration(labelText: 'Username'),
+              decoration: const InputDecoration(labelText: 'Username'),
             ),
             TextField(
               controller: _passwordController,
               obscureText: true,
-              decoration: InputDecoration(labelText: 'Password'),
+              decoration: const InputDecoration(labelText: 'Password'),
             ),
-            SizedBox(height: 20),
+            const SizedBox(height: 20),
             _isLoading
-                ? CircularProgressIndicator()
+                ? const CircularProgressIndicator()
                 : ElevatedButton(
                     onPressed: _login,
-                    child: Text('Login'),
+                    child: const Text('Login'),
                   ),
           ],
         ),

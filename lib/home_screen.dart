@@ -1,17 +1,30 @@
 import 'package:flutter/material.dart';
+import 'package:beautiful_soup_dart/beautiful_soup.dart';
 import 'login.dart';
 
 class HomeScreen extends StatelessWidget {
-  final String studentName;
-  final String studentEmail;
-  final String studentID;
+  final BeautifulSoup bs;
 
   const HomeScreen({
     super.key,
-    required this.studentName,
-    required this.studentEmail,
-    required this.studentID,
+    required this.bs,
   });
+
+  String getStudentName() {
+    return bs.find('*', id: 'span_MPW0041vPRO_PESSOALNOME')?.text ?? 'Unknown';
+  }
+
+  String getStudentEmail() {
+    return bs
+            .find('*', id: 'span_MPW0041vACD_ALUNOCURSOREGISTROACADEMICOCURSO')
+            ?.text ??
+        'Unknown';
+  }
+
+  String getStudentID() {
+    return bs.find('*', id: 'span_MPW0041vINSTITUCIONALFATEC')?.text ??
+        'Unknown';
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -34,9 +47,9 @@ class HomeScreen extends StatelessWidget {
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(studentName, style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                        Text(studentEmail),
-                        Text(studentID),
+                        Text(getStudentName(), style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                        Text(getStudentEmail()),
+                        Text(getStudentID()),
                       ],
                     ),
                     IconButton(
