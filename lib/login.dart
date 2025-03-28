@@ -8,6 +8,14 @@ import 'home_screen.dart';
 import 'package:flutter/foundation.dart';
 import 'dart:convert';
 
+import 'package:hive_flutter/hive_flutter.dart';
+
+//Database
+import 'student_data.dart';
+import 'schedule_data.dart';
+import 'grade_data.dart';
+import 'attendance_data.dart';
+
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
 
@@ -16,23 +24,240 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  final Dio _dio = Dio(BaseOptions(
+  String studentName = 'Loading...';
+  String studentEmail = 'Loading...';
+  String studentID = 'Loading...';
+
+  final Dio dio = Dio(BaseOptions(
     followRedirects: false,
     validateStatus: (status) {
       return status != null && (status < 400 || status == 303);
     },
   ));
 
-  final CookieJar _cookieJar = CookieJar();
+  final CookieJar cookieJar = CookieJar();
 
   final TextEditingController _usernameController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
+
+  final studentBox = Hive.box<StudentData>('studentBox');
+  final scheduleBox = Hive.box<ScheduleData>('scheduleBox');
+  final gradeBox = Hive.box<GradeData>('gradeBox');
+  final attendanceBox = Hive.box<AttendanceData>('attendanceBox');
+
   bool _isLoading = false;
 
   @override
   void initState() {
     super.initState();
-    _dio.interceptors.add(CookieManager(_cookieJar));
+    dio.interceptors.add(CookieManager(cookieJar));
+  }
+
+  Future<void> _loadData() async {
+    final studentData = studentBox.get('studentData');
+    final scheduleData = scheduleBox.get('scheduleData');
+    final gradeData = gradeBox.get('gradeData');
+    final attendanceData = attendanceBox.get('attendanceData');
+
+    if (studentData == null || scheduleData == null || gradeData == null || attendanceData == null) {
+      _fetchData();
+    }
+  }
+
+  Future<void> _fetchData() async {
+    try {
+      final homeResponse =
+          await dio.get('https://siga.cps.sp.gov.br/aluno/home.aspx',
+            options: Options(
+              headers: {
+                'Referer': 'https://siga.cps.sp.gov.br/aluno/login.aspx',
+              }
+            )
+          );
+
+      if (!homeResponse.data.contains('span_MPW0041vPRO_PESSOALNOME')) {
+        throw Exception("❌ Login failed! Still on login page.");
+      }
+
+      BeautifulSoup bs = BeautifulSoup(homeResponse.data);
+
+      await studentBox.put(
+        'studentData',
+        StudentData(
+          studentName: bs.find('*', id: 'span_MPW0041vPRO_PESSOALNOME')?.text ?? 'Unknown',
+          studentEmail: bs.find('*', id: 'span_MPW0041vACD_ALUNOCURSOREGISTROACADEMICOCURSO')?.text ?? 'Unknown',
+          studentID: bs.find('*', id: 'span_MPW0041vINSTITUCIONALFATEC')?.text ?? 'Unknown',
+        ),
+      );
+
+      final horarioResponse =
+          await dio.get('https://siga.cps.sp.gov.br/aluno/horario.aspx',
+            options: Options(
+              headers: {
+                'Referer': 'https://siga.cps.sp.gov.br/aluno/home.aspx',
+              }
+            )
+          );
+
+      bs = BeautifulSoup(horarioResponse.data);
+
+      List<ClassData> classList = [
+        ClassData(
+          weekDay: 'Segunda-Feira',
+          className: 'Unknown',
+          duration: 'Unknown',
+        ),
+        ClassData(
+          weekDay: 'Terça-Feira',
+          className: 'Unknown',
+          duration: 'Unknown',
+        ),
+        ClassData(
+          weekDay: 'Quarta-Feira',
+          className: 'Unknown',
+          duration: 'Unknown',
+        ),
+        ClassData(
+          weekDay: 'Quinta-Feira',
+          className: 'Unknown',
+          duration: 'Unknown',
+        ),
+        ClassData(
+          weekDay: 'Sexta-Feira',
+          className: 'Unknown',
+          duration: 'Unknown',
+        ),
+        ClassData(
+          weekDay: 'Sábado',
+          className: 'Unknown',
+          duration: 'Unknown',
+        ),
+      ];
+
+      await scheduleBox.put(
+        'scheduleData',
+        ScheduleData(
+          classes: classList,
+        ),
+      );
+
+      final notasResponse =
+          await dio.get('https://siga.cps.sp.gov.br/aluno/notas.aspx',
+            options: Options(
+              headers: {
+                'Referer': 'https://siga.cps.sp.gov.br/aluno/horario.aspx',
+              }
+            )
+          );
+
+      bs = BeautifulSoup(notasResponse.data);
+
+      List<ClassGrade> gradeList = [
+        ClassGrade(
+          className: 'Class 1',
+          grade: 'Unknown',
+        ),
+        ClassGrade(
+          className: 'Class 2',
+          grade: 'Unknown',
+        ),
+        ClassGrade(
+          className: 'Class 3',
+          grade: 'Unknown',
+        ),
+        ClassGrade(
+          className: 'Class 4',
+          grade: 'Unknown',
+        ),
+        ClassGrade(
+          className: 'Class 5',
+          grade: 'Unknown',
+        ),
+        ClassGrade(
+          className: 'Class 6',
+          grade: 'Unknown',
+        ),
+        ClassGrade(
+          className: 'Class 7',
+          grade: 'Unknown',
+        ),
+        ClassGrade(
+          className: 'Class 8',
+          grade: 'Unknown',
+        ),
+      ];
+
+      await gradeBox.put(
+        'gradeData',
+        GradeData(
+          classGrades: gradeList,
+        ),
+      );
+
+      final faltasResponse =
+          await dio.get('https://siga.cps.sp.gov.br/aluno/faltas.aspx',
+            options: Options(
+              headers: {
+                'Referer': 'https://siga.cps.sp.gov.br/aluno/horarios.aspx',
+              }
+            )
+          );
+
+      bs = BeautifulSoup(faltasResponse.data);
+
+      List<ClassAttendance> attendanceList = [
+        ClassAttendance(
+          className: 'Class 1',
+          attendance: 'Unknown',
+          absences: 'Unknown',
+        ),
+        ClassAttendance(
+          className: 'Class 2',
+          attendance: 'Unknown',
+          absences: 'Unknown',
+        ),
+        ClassAttendance(
+          className: 'Class 3',
+          attendance: 'Unknown',
+          absences: 'Unknown',
+        ),
+        ClassAttendance(
+          className: 'Class 4',
+          attendance: 'Unknown',
+          absences: 'Unknown',
+        ),
+        ClassAttendance(
+          className: 'Class 5',
+          attendance: 'Unknown',
+          absences: 'Unknown',
+        ),
+        ClassAttendance(
+          className: 'Class 6',
+          attendance: 'Unknown',
+          absences: 'Unknown',
+        ),
+        ClassAttendance(
+          className: 'Class 7',
+          attendance: 'Unknown',
+          absences: 'Unknown',
+        ),
+        ClassAttendance(
+          className: 'Class 8',
+          attendance: 'Unknown',
+          absences: 'Unknown',
+        ),
+      ];
+
+      await attendanceBox.put(
+        'attendanceData',
+        AttendanceData(
+          classAttendanceList: attendanceList,
+        ),
+      );
+
+    } catch (e) {
+
+    }
   }
 
   Future<void> _login() async {
@@ -42,7 +267,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
     try {
       final loginPageResponse =
-          await _dio.get('https://siga.cps.sp.gov.br/aluno/login.aspx');
+          await dio.get('https://siga.cps.sp.gov.br/aluno/login.aspx');
       if (loginPageResponse.statusCode != 200) {
         throw Exception("Failed to load login page.");
       }
@@ -67,7 +292,7 @@ class _LoginScreenState extends State<LoginScreen> {
       // Encode the modified GXState back to a JSON string
       final modifiedGxStateValue = jsonEncode(gxStateJson);
 
-      final loginResponse = await _dio.post(
+      final loginResponse = await dio.post(
         'https://siga.cps.sp.gov.br/aluno/login.aspx',
         data: {
           'vSIS_USUARIOID': _usernameController.text,
@@ -87,7 +312,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
       print('Login Response Body: ${loginResponse.data}');
 
-      final cookies = await _cookieJar.loadForRequest(
+      final cookies = await cookieJar.loadForRequest(
           Uri.parse('https://siga.cps.sp.gov.br/aluno/login.aspx'));
       print('Saved Cookies: $cookies');
 
@@ -101,7 +326,7 @@ class _LoginScreenState extends State<LoginScreen> {
           // Construct the full redirect URL
           final fullRedirectUrl = 'https://siga.cps.sp.gov.br/aluno/$redirectUrl';
 
-          final redirectedResponse = await _dio.get(
+          final redirectedResponse = await dio.get(
             fullRedirectUrl,
             options: Options(
               headers: {
@@ -117,20 +342,12 @@ class _LoginScreenState extends State<LoginScreen> {
           }
       }
 
-      final homeResponse =
-          await _dio.get('https://siga.cps.sp.gov.br/aluno/home.aspx');
-      if (!homeResponse.data.contains('span_MPW0041vPRO_PESSOALNOME')) {
-        throw Exception("❌ Login failed! Still on login page.");
-      }
-
-      BeautifulSoup bs = BeautifulSoup(homeResponse.data);
+      _loadData();
 
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(
-          builder: (context) => HomeScreen(
-            bs: bs,
-          ),
+          builder: (context) => HomeScreen(),
         ),
       );
     } catch (e) {
