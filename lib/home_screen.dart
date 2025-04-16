@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:beautiful_soup_dart/beautiful_soup.dart';
-import 'package:dio/dio.dart';
+import 'package:hive/hive.dart';
+import 'student_data.dart';
 import 'login.dart';
 
 class HomeScreen extends StatelessWidget {
@@ -11,7 +11,8 @@ class HomeScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-
+    final studentBox = Hive.box<StudentData>('studentBox');
+    final student = studentBox.getAt(0);
     
     return Scaffold(
       body: Stack(
@@ -32,9 +33,9 @@ class HomeScreen extends StatelessWidget {
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('Unknown', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                        Text('Unknown'),
-                        Text('Unknown'),
+                        Text('${student?.studentName}', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                        Text('${student?.studentEmail}'),
+                        Text('${student?.studentID}'),
                       ],
                     ),
                     IconButton(

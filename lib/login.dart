@@ -1,7 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 
 import 'home_screen.dart';
+
+//Databases
+import 'student_data.dart';
+import 'schedule_data.dart';
+import 'grade_data.dart';
+import 'attendance_data.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -26,21 +33,14 @@ class _LoginScreenState extends State<LoginScreen> {
           onPageFinished: (url) async {
             print("✅ Página carregada: $url");
 
-            // Simula clique no botão "Entrar"
             if (url.contains('applogin.aspx')) {
-              print("🔁 Simulando clique no botão...");
-
+              print("🔁 Simulando clique no botão de login...");
               await _controller.runJavaScript("""
-                const button = document.querySelector('[onclick*="bootstrapclick(\\'LOGIN\\')"]');
-                if (button) {
-                  button.click();
-                } else {
-                  console.log("❌ Botão não encontrado.");
-                }
+                const btn = document.querySelector('[onclick*="bootstrapclick(\\'LOGIN\\')"]');
+                if (btn) btn.click();
               """);
             }
 
-            // Quando for redirecionado para Microsoft login ou home, remove tela de loading
             if (url.contains('login.microsoftonline.com')) {
               Future.delayed(const Duration(milliseconds: 400), () {
                 if (mounted) {
@@ -51,18 +51,74 @@ class _LoginScreenState extends State<LoginScreen> {
               });
             }
 
-            // Quando estiver logado, redireciona para HomeScreen
             if (url.contains('app.aspx')) {
-              print("✅ Login concluído! Redirecionando...");
-
-              Future.delayed(const Duration(seconds: 1), () {
-                if (mounted) {
-                  Navigator.pushReplacement(
-                    context,
-                    MaterialPageRoute(builder: (context) => const HomeScreen()),
-                  );
-                }
+              setState(() {
+                _hideWebView = true;
               });
+
+              print("✅ Página app.aspx carregada!");
+
+              // Clicar no botão "meu curso"
+              await Future.delayed(const Duration(seconds: 1));
+              await _controller.runJavaScript("""
+                const cursoBtn = [...document.querySelectorAll('.uc_appfooter-button')]
+                  .find(el => el.innerText.toLowerCase().includes('meu curso'));
+                if (cursoBtn) cursoBtn.click();
+              """);
+
+              // Espera o conteúdo carregar e extrai os dados
+              await Future.delayed(const Duration(seconds: 2));
+
+              String nome = await _controller.runJavaScriptReturningResult("""
+                (function() {
+                  const el = document.querySelector('.uc_appinfo-title strong');
+                  return el ? el.textContent : '';
+                })();
+              """) as String;
+
+              String email = await _controller.runJavaScriptReturningResult("""
+                (function() {
+                  const flexRows = document.querySelectorAll('.uc_flex-r');
+                  for (const row of flexRows) {
+                    const label = row.children[0];
+                    const value = row.children[1];
+                    if (label && value && label.textContent.includes("E-mail")) {
+                      return value.textContent.trim();
+                    }
+                  }
+                  return '';
+                })();
+              """) as String;
+
+              String ra = await _controller.runJavaScriptReturningResult("""
+                (function() {
+                  const flexRows = document.querySelectorAll('.uc_flex-r');
+                  for (const row of flexRows) {
+                    const label = row.children[0];
+                    const value = row.children[1];
+                    if (label && value && label.textContent.includes("RA")) {
+                      return value.textContent.trim();
+                    }
+                  }
+                  return '';
+                })();
+              """) as String;
+
+              //var studentBox = await Hive.openBox('studentBox');
+              final studentBox = Hive.box<StudentData>('studentBox');
+              await studentBox.add(StudentData(
+                studentName: nome,
+                studentEmail: email,
+                studentID: ra,
+              ));
+
+              // Ir para HomeScreen (você pode passar os dados depois por argumento se quiser)
+              if (mounted) {
+                Navigator.pushReplacement(
+                  context,
+                  MaterialPageRoute(builder: (context) => const HomeScreen()),
+                );
+              }
             }
           },
         ),
@@ -75,10 +131,7 @@ class _LoginScreenState extends State<LoginScreen> {
     return Scaffold(
       body: Stack(
         children: [
-          // WebView (por trás da tela branca)
           WebViewWidget(controller: _controller),
-
-          // Tela branca com loading
           if (_hideWebView)
             Container(
               color: Colors.white,
