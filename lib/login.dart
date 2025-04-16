@@ -10,6 +10,29 @@ import 'schedule_data.dart';
 import 'grade_data.dart';
 import 'attendance_data.dart';
 
+/*
+[Faltas]
+
+- uc_appcard uc_pointer
+- uc_appcard-titlecontainer (Class ID)
+- up_appcard-title (Class Name)
+
+- uc_flex-r uc_flex-jcsb uc_mb5 uc_appborder-bottom [Strong]
+- uc_applabel [0] = (Total)
+- uc_applabel [1] = (Attendance)
+- uc_applabel [2] = (Absense)
+- uc_applabel [3] = (Frequency)
+
+[Notas]
+
+- uc_appcard uc_pointer [OnClick] / [Class Name]
+-> OnClick [Javascript]
+
+- uc_appcardsimples-container
+- uc_appcardsimples-title uc_m10 [Amount]
+- uc_flex-r [0][1][2] [Type] -> Check how many there is <-
+*/
+
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
 
