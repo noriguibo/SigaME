@@ -18,8 +18,8 @@ class StudentDataAdapter extends TypeAdapter<StudentData> {
     };
     return StudentData(
       studentName: fields[0] as String,
-      studentEmail: fields[1] as String,
-      studentID: fields[2] as String,
+      studentID: fields[1] as String,
+      studentPhoto: fields[2] as Uint8List?,
     );
   }
 
@@ -30,9 +30,9 @@ class StudentDataAdapter extends TypeAdapter<StudentData> {
       ..writeByte(0)
       ..write(obj.studentName)
       ..writeByte(1)
-      ..write(obj.studentEmail)
+      ..write(obj.studentID)
       ..writeByte(2)
-      ..write(obj.studentID);
+      ..write(obj.studentPhoto);
   }
 
   @override

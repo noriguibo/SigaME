@@ -1,19 +1,16 @@
-import 'package:dio/dio.dart';
-import 'package:dio_cookie_manager/dio_cookie_manager.dart';
-import 'package:cookie_jar/cookie_jar.dart';
-import 'package:flutter/material.dart';
-import 'package:html/parser.dart' as html;
-import 'package:beautiful_soup_dart/beautiful_soup.dart';
-import 'home_screen.dart';
-import 'package:flutter/foundation.dart';
 import 'dart:convert';
 
+import 'package:flutter/material.dart';
+import 'package:webview_flutter/webview_flutter.dart';
 import 'package:hive_flutter/hive_flutter.dart';
+import 'package:http/http.dart' as http;
+import 'dart:typed_data';
 
-//Database
+import 'home_screen.dart';
+//Databases
 import 'student_data.dart';
 import 'schedule_data.dart';
-import 'grade_data.dart';
+import 'models/grade_data.dart';
 import 'attendance_data.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -24,371 +21,337 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  String studentName = 'Loading...';
-  String studentEmail = 'Loading...';
-  String studentID = 'Loading...';
-
-  final Dio dio = Dio(BaseOptions(
-    followRedirects: false,
-    validateStatus: (status) {
-      return status != null && (status < 400 || status == 303);
-    },
-  ));
-
-  final CookieJar cookieJar = CookieJar();
-
-  final TextEditingController _usernameController = TextEditingController();
-  final TextEditingController _passwordController = TextEditingController();
-
-  final studentBox = Hive.box<StudentData>('studentBox');
-  final scheduleBox = Hive.box<ScheduleData>('scheduleBox');
-  final gradeBox = Hive.box<GradeData>('gradeBox');
-  final attendanceBox = Hive.box<AttendanceData>('attendanceBox');
-
-  bool _isLoading = false;
+  late final WebViewController _controller;
+  final String sigaUrl = 'https://siga.cps.sp.gov.br/sigaaluno/applogin.aspx';
+  bool _hideWebView = true;
+  bool _loggedIn = false;
+  bool _meuCursoClicked = false;
+  bool _notasClicked = false;
+  bool _gradesExtracted = false;
 
   @override
   void initState() {
     super.initState();
-    dio.interceptors.add(CookieManager(cookieJar));
-  }
+    print("➡️ initState chamado");
 
-  Future<void> _loadData() async {
-    final studentData = studentBox.get('studentData');
-    final scheduleData = scheduleBox.get('scheduleData');
-    final gradeData = gradeBox.get('gradeData');
-    final attendanceData = attendanceBox.get('attendanceData');
-
-    if (studentData == null || scheduleData == null || gradeData == null || attendanceData == null) {
-      _fetchData();
-    }
-  }
-
-  Future<void> _fetchData() async {
-    try {
-      final homeResponse =
-          await dio.get('https://siga.cps.sp.gov.br/aluno/home.aspx',
-            options: Options(
-              headers: {
-                'Referer': 'https://siga.cps.sp.gov.br/aluno/login.aspx',
-              }
-            )
-          );
-
-      if (!homeResponse.data.contains('span_MPW0041vPRO_PESSOALNOME')) {
-        throw Exception("❌ Login failed! Still on login page.");
-      }
-
-      BeautifulSoup bs = BeautifulSoup(homeResponse.data);
-
-      await studentBox.put(
-        'studentData',
-        StudentData(
-          studentName: bs.find('*', id: 'span_MPW0041vPRO_PESSOALNOME')?.text ?? 'Unknown',
-          studentEmail: bs.find('*', id: 'span_MPW0041vACD_ALUNOCURSOREGISTROACADEMICOCURSO')?.text ?? 'Unknown',
-          studentID: bs.find('*', id: 'span_MPW0041vINSTITUCIONALFATEC')?.text ?? 'Unknown',
-        ),
-      );
-
-      final horarioResponse =
-          await dio.get('https://siga.cps.sp.gov.br/aluno/horario.aspx',
-            options: Options(
-              headers: {
-                'Referer': 'https://siga.cps.sp.gov.br/aluno/home.aspx',
-              }
-            )
-          );
-
-      bs = BeautifulSoup(horarioResponse.data);
-
-      List<ClassData> classList = [
-        ClassData(
-          weekDay: 'Segunda-Feira',
-          className: 'Unknown',
-          duration: 'Unknown',
-        ),
-        ClassData(
-          weekDay: 'Terça-Feira',
-          className: 'Unknown',
-          duration: 'Unknown',
-        ),
-        ClassData(
-          weekDay: 'Quarta-Feira',
-          className: 'Unknown',
-          duration: 'Unknown',
-        ),
-        ClassData(
-          weekDay: 'Quinta-Feira',
-          className: 'Unknown',
-          duration: 'Unknown',
-        ),
-        ClassData(
-          weekDay: 'Sexta-Feira',
-          className: 'Unknown',
-          duration: 'Unknown',
-        ),
-        ClassData(
-          weekDay: 'Sábado',
-          className: 'Unknown',
-          duration: 'Unknown',
-        ),
-      ];
-
-      await scheduleBox.put(
-        'scheduleData',
-        ScheduleData(
-          classes: classList,
-        ),
-      );
-
-      final notasResponse =
-          await dio.get('https://siga.cps.sp.gov.br/aluno/notas.aspx',
-            options: Options(
-              headers: {
-                'Referer': 'https://siga.cps.sp.gov.br/aluno/horario.aspx',
-              }
-            )
-          );
-
-      bs = BeautifulSoup(notasResponse.data);
-
-      List<ClassGrade> gradeList = [
-        ClassGrade(
-          className: 'Class 1',
-          grade: 'Unknown',
-        ),
-        ClassGrade(
-          className: 'Class 2',
-          grade: 'Unknown',
-        ),
-        ClassGrade(
-          className: 'Class 3',
-          grade: 'Unknown',
-        ),
-        ClassGrade(
-          className: 'Class 4',
-          grade: 'Unknown',
-        ),
-        ClassGrade(
-          className: 'Class 5',
-          grade: 'Unknown',
-        ),
-        ClassGrade(
-          className: 'Class 6',
-          grade: 'Unknown',
-        ),
-        ClassGrade(
-          className: 'Class 7',
-          grade: 'Unknown',
-        ),
-        ClassGrade(
-          className: 'Class 8',
-          grade: 'Unknown',
-        ),
-      ];
-
-      await gradeBox.put(
-        'gradeData',
-        GradeData(
-          classGrades: gradeList,
-        ),
-      );
-
-      final faltasResponse =
-          await dio.get('https://siga.cps.sp.gov.br/aluno/faltas.aspx',
-            options: Options(
-              headers: {
-                'Referer': 'https://siga.cps.sp.gov.br/aluno/horarios.aspx',
-              }
-            )
-          );
-
-      bs = BeautifulSoup(faltasResponse.data);
-
-      List<ClassAttendance> attendanceList = [
-        ClassAttendance(
-          className: 'Class 1',
-          attendance: 'Unknown',
-          absences: 'Unknown',
-        ),
-        ClassAttendance(
-          className: 'Class 2',
-          attendance: 'Unknown',
-          absences: 'Unknown',
-        ),
-        ClassAttendance(
-          className: 'Class 3',
-          attendance: 'Unknown',
-          absences: 'Unknown',
-        ),
-        ClassAttendance(
-          className: 'Class 4',
-          attendance: 'Unknown',
-          absences: 'Unknown',
-        ),
-        ClassAttendance(
-          className: 'Class 5',
-          attendance: 'Unknown',
-          absences: 'Unknown',
-        ),
-        ClassAttendance(
-          className: 'Class 6',
-          attendance: 'Unknown',
-          absences: 'Unknown',
-        ),
-        ClassAttendance(
-          className: 'Class 7',
-          attendance: 'Unknown',
-          absences: 'Unknown',
-        ),
-        ClassAttendance(
-          className: 'Class 8',
-          attendance: 'Unknown',
-          absences: 'Unknown',
-        ),
-      ];
-
-      await attendanceBox.put(
-        'attendanceData',
-        AttendanceData(
-          classAttendanceList: attendanceList,
-        ),
-      );
-
-    } catch (e) {
-
-    }
-  }
-
-  Future<void> _login() async {
-    setState(() {
-      _isLoading = true;
-    });
-
-    try {
-      final loginPageResponse =
-          await dio.get('https://siga.cps.sp.gov.br/aluno/login.aspx');
-      if (loginPageResponse.statusCode != 200) {
-        throw Exception("Failed to load login page.");
-      }
-
-      final document = html.parse(loginPageResponse.data);
-      final gxStateElement = document.querySelector('input[name="GXState"]');
-      final gxStateValue = gxStateElement?.attributes['value'] ?? '';
-
-      if (gxStateValue.isEmpty) {
-        throw Exception("Failed to extract GXState.");
-      }
-
-      // Decode the GXState JSON string
-      Map<String, dynamic> gxStateJson = jsonDecode(gxStateValue);
-
-      // Add the event name and the missing parameters.
-      gxStateJson["_EventName"] = "E'EVT_CONFIRMAR'.";
-      gxStateJson["_MODE"] = "";
-      gxStateJson["Mode"] = "";
-      gxStateJson["IsModified"] = "1";
-
-      // Encode the modified GXState back to a JSON string
-      final modifiedGxStateValue = jsonEncode(gxStateJson);
-
-      final loginResponse = await dio.post(
-        'https://siga.cps.sp.gov.br/aluno/login.aspx',
-        data: {
-          'vSIS_USUARIOID': _usernameController.text,
-          'vSIS_USUARIOSENHA': _passwordController.text,
-          'BTCONFIRMA': 'Confirmar',
-          'GXState': modifiedGxStateValue, // Use the modified GXState
+    _controller = WebViewController()
+      ..setJavaScriptMode(JavaScriptMode.unrestricted)
+      ..addJavaScriptChannel(
+        'FlutterChannel',
+        onMessageReceived: (JavaScriptMessage message) {
+          print("✅ Flutter recebeu mensagem do WebView: ${message.message}");
+          if (message.message == 'loggedIn') {
+            _navigateToMeuCurso();
+          } else if (message.message == 'meuCursoClicked') {
+            _navigateToNotas();
+          } else if (message.message == 'notasLoaded') {
+            _extractGrades();
+          } else if (message.message.startsWith('grades:')) {
+            _processAndSaveGrades(message.message.substring('grades:'.length));
+          }
         },
-        options: Options(
-          headers: {
-            'Content-Type': 'application/x-www-form-urlencoded',
-            'Referer': 'https://siga.cps.sp.gov.br/aluno/login.aspx',
-            'User-Agent':
-                'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+      )
+      ..loadRequest(Uri.parse(sigaUrl))
+      ..setNavigationDelegate(
+        NavigationDelegate(
+          onPageFinished: (url) async {
+            print("✅ Página carregada (onPageFinished): $url");
+            if (url.contains('applogin.aspx') && !_loggedIn) {
+              await _simulateLogin();
+            }
+            if (url.contains('login.microsoftonline.com')) {
+              Future.delayed(const Duration(milliseconds: 400), () {
+                if (mounted) {
+                  setState(() {
+                    _hideWebView = false;
+                  });
+                }
+              });
+            }
           },
         ),
       );
+  }
 
-      print('Login Response Body: ${loginResponse.data}');
-
-      final cookies = await cookieJar.loadForRequest(
-          Uri.parse('https://siga.cps.sp.gov.br/aluno/login.aspx'));
-      print('Saved Cookies: $cookies');
-
-      String? redirectUrl = loginResponse.headers['location']?.first;
-
-      if (loginResponse.statusCode == 303) {
-        print('Redirect URL: $redirectUrl');
+  Future<void> _simulateLogin() async {
+    print("➡️ _simulateLogin chamado");
+    await _controller.runJavaScript("""
+      console.log('Tentando clicar no botão de login...');
+      const btn = document.querySelector('[onclick*="bootstrapclick(\\'LOGIN\\')"]');
+      if (btn) {
+        console.log('Botão de login encontrado, clicando...');
+        btn.click();
+        setTimeout(() => {
+          console.log('Enviando mensagem loggedIn para Flutter');
+          FlutterChannel.postMessage('loggedIn');
+        }, 2000);
+      } else {
+        console.log('Botão de login NÃO encontrado!');
       }
+    """);
+    setState(() {
+      _loggedIn = true;
+    });
+    print("⬅️ _simulateLogin concluído");
+  }
 
-      if (loginResponse.statusCode == 303 && redirectUrl != null) {
-          // Construct the full redirect URL
-          final fullRedirectUrl = 'https://siga.cps.sp.gov.br/aluno/$redirectUrl';
-
-          final redirectedResponse = await dio.get(
-            fullRedirectUrl,
-            options: Options(
-              headers: {
-                'Referer': 'https://siga.cps.sp.gov.br/aluno/login.aspx',
-              },
-            ),
-          );
-
-          if (redirectedResponse.statusCode == 200) {
-            print('✅ Successfully followed the redirect to home.');
-          } else {
-            throw Exception("Failed to follow redirect.");
-          }
-      }
-
-      _loadData();
-
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(
-          builder: (context) => HomeScreen(),
-        ),
-      );
-    } catch (e) {
-      if (kDebugMode) {
-        print('Error: $e');
-      }
-    } finally {
-      setState(() {
-        _isLoading = false;
-      });
+  Future<void> _navigateToMeuCurso() async {
+    if (_meuCursoClicked) {
+      print("➡️ _navigateToMeuCurso já chamado, ignorando.");
+      return;
     }
+    setState(() {
+      _hideWebView = true;
+    });
+    print("➡️ _navigateToMeuCurso chamado");
+
+    int retryCount = 0;
+    const maxRetries = 10;
+    const delayDuration = Duration(seconds: 2);
+
+    while (retryCount < maxRetries) {
+      final dynamic cursoButtonExists = await _controller.runJavaScriptReturningResult("""
+        [...document.querySelectorAll('.uc_appfooter-button')]
+          .some(el => el.innerText.toLowerCase().includes('meu curso'));
+      """);
+
+      if (cursoButtonExists == true) {
+        print("✅ Botão Meu curso encontrado!");
+        await _controller.runJavaScript("""
+          document.querySelectorAll('.uc_appfooter-button')
+            .forEach(el => {
+              if (el.innerText.toLowerCase().includes('meu curso')) {
+                console.log('Botão Meu curso encontrado, clicando...');
+                el.click();
+                setTimeout(() => {
+                  console.log('Enviando mensagem meuCursoClicked para Flutter');
+                  FlutterChannel.postMessage('meuCursoClicked');
+                }, 2000);
+              }
+            });
+        """);
+        setState(() {
+          _meuCursoClicked = true;
+        });
+        print("⬅️ _navigateToMeuCurso concluído");
+        return;
+      } else {
+        print("⏳ Aguardando o carregamento da seção 'Meu curso' (tentativa ${retryCount + 1})...");
+        await Future.delayed(delayDuration);
+        retryCount++;
+      }
+    }
+    print("❌ Falha ao encontrar a seção 'Meu curso' após $maxRetries tentativas.");
+  }
+
+  Future<void> _navigateToNotas() async {
+    if (_notasClicked) {
+      print("➡️ _navigateToNotas já chamado, ignorando.");
+      return;
+    }
+    print("➡️ _navigateToNotas chamado");
+    await Future.delayed(const Duration(seconds: 3));
+    await _controller.runJavaScript("""
+      console.log('Tentando encontrar e clicar no item Notas...');
+      document.querySelectorAll('.uc_appgrid-item')
+        .forEach(el => {
+          const spanElement = el.querySelector('span');
+          if (spanElement && spanElement.textContent.trim().toLowerCase() === 'notas') {
+            console.log('Item Notas encontrado, clicando...');
+            el.click();
+            setTimeout(() => {
+              console.log('Enviando mensagem notasLoaded para Flutter');
+              FlutterChannel.postMessage('notasLoaded');
+            }, 3000);
+          }
+        });
+    """);
+    setState(() {
+      _notasClicked = true;
+    });
+    print("⬅️ _navigateToNotas concluído");
+  }
+
+  Future<void> _extractGrades() async {
+    if (_gradesExtracted) {
+      print("➡️ _extractGrades já chamado, ignorando.");
+      return;
+    }
+    print("➡️ _extractGrades chamado");
+    await Future.delayed(const Duration(seconds: 3));
+
+    final dynamic flutterChannelExists = await _controller.runJavaScriptReturningResult("""
+      typeof FlutterChannel !== 'undefined';
+    """);
+    print("✅ typeof FlutterChannel: $flutterChannelExists");
+    if (flutterChannelExists != true) {
+      print("⚠️ FlutterChannel is NOT defined in the WebView!");
+      return;
+    } else {
+      print("✅ FlutterChannel IS defined in the WebView.");
+    }
+
+    final totalCards = await _controller.runJavaScriptReturningResult("""
+      document.querySelectorAll('.uc_appcard.uc_pointer').length;
+    """);
+
+    int total = 0;
+    if (totalCards is int) {
+      total = totalCards;
+    } else if (totalCards is String) {
+      total = int.tryParse(totalCards.replaceAll('"', '')) ?? 0;
+    } else {
+      print("⚠️ Resultado inesperado ao contar cards: $totalCards");
+      return;
+    }
+
+    print("➡️ Iniciando extração de $total disciplinas...");
+    String allGradesJson = '[';
+    for (int i = 0; i < total; i++) {
+      print("➡️ Extraindo dados da disciplina $i...");
+      final disciplina = await _controller.runJavaScriptReturningResult("""
+        document.querySelectorAll('.uc_appcard.uc_pointer .uc_appcard-titlecontainer .uc_appcard-title')[${i}]?.textContent?.trim() ?? ''
+      """) as String?;
+      print("➡️ Disciplina $i: $disciplina");
+
+      final professor = await _controller.runJavaScriptReturningResult("""
+        (() => {
+          const containerText = document.querySelectorAll('.uc_appcard.uc_pointer .uc_appcard-titlecontainer')[${i}]?.textContent?.trim();
+          console.log('Container Text for discipline ${i}:', containerText);
+          const disciplinaElement = document.querySelectorAll('.uc_appcard.uc_pointer .uc_appcard-titlecontainer .uc_appcard-title')[${i}]?.textContent?.trim();
+          const codigoElement = containerText?.split(disciplinaElement)?.[0]?.trim();
+
+          if (containerText && disciplinaElement && codigoElement) {
+            const professorName = containerText.substring(codigoElement.length + disciplinaElement.length).trim();
+            console.log('Extracted Professor Name for discipline ${i}:', professorName);
+            return professorName;
+          }
+          return '';
+        })();
+      """) as String?;
+      print("➡️ Professor $i: $professor");
+
+      await _controller.runJavaScript("""
+        document.querySelectorAll('.uc_appcard.uc_pointer')[${i}].click();
+        console.log('Clicou no card da disciplina $i');
+      """);
+      await Future.delayed(const Duration(seconds: 1));
+
+      final avaliacoesJson = await _controller.runJavaScriptReturningResult('''
+        (function() {
+          try {
+            const resultados = [];
+            const evaluationContainers = document.querySelectorAll('.uc_appcardsimples-container .uc_appcardsimples');
+            console.log('Encontrados ' + evaluationContainers.length + ' cards de avaliação.');
+            for (let card of evaluationContainers) {
+              let notaElement = card.querySelector('.uc_appcardsimples-title center');
+              let nota = notaElement ? notaElement.innerText.trim().replace(',', '.') : '0.0';
+              let dataElement = card.querySelector('.uc_mb5');
+              let data = dataElement ? dataElement.innerText.trim() : 'Data não disponível';
+              let nomeElement = card.querySelector('.uc_flex-r:nth-child(3) div:nth-child(2)');
+              let nome = nomeElement ? nomeElement.innerText.trim() : 'Avaliação sem nome';
+              resultados.push({
+                'nome': nome,
+                'data': data,
+                'nota': nota
+              });
+            }
+            const jsonResult = JSON.stringify(resultados);
+            console.log('JSON de avaliações da disciplina $i: ' + jsonResult);
+            return jsonResult;
+          } catch (e) {
+            console.error('Erro ao extrair avaliações da disciplina $i: ' + e);
+            return JSON.stringify([]);
+          }
+        })();
+      ''') as String?;
+      print("➡️ Avaliações JSON da disciplina $i: $avaliacoesJson");
+
+      await _controller.runJavaScript("""
+        document.querySelectorAll('.uc_appbtvoltar.uc_pointer')
+          .forEach(el => {
+            const text = el.innerText.toLowerCase().trim();
+            const icon = el.querySelector('i.fas.fa-chevron-left');
+            if (text === 'voltar' && icon) {
+              console.log('Botão Voltar encontrado, clicando...');
+              el.click();
+            }
+          });
+        console.log('Tentou voltar para a tela de disciplinas $i');
+      """);
+      await Future.delayed(const Duration(seconds: 1));
+    }
+
+    if (allGradesJson.endsWith(',')) {
+      allGradesJson = allGradesJson.substring(0, allGradesJson.length - 1);
+    }
+    allGradesJson += ']';
+    print("➡️ JSON final das notas: $allGradesJson");
+
+    await _controller.runJavaScript("""
+      console.log('Enviando grades para Flutter: ' + '$allGradesJson');
+      FlutterChannel.postMessage('grades:' + '$allGradesJson');
+    """);
+
+    setState(() {
+      _gradesExtracted = true;
+    });
+    print("⬅️ _extractGrades concluído");
+  }
+
+  Future<void> _processAndSaveGrades(String gradesJson) async {
+    print("➡️ _processAndSaveGrades chamado com JSON: $gradesJson");
+    List<SubjectGrade> subjectGrades = [];
+    try {
+      final List<dynamic> decoded = jsonDecode(gradesJson);
+      subjectGrades = decoded.map((subjectData) {
+        final List<dynamic> evaluationsData = subjectData['evaluations'] ?? [];
+        final List<Evaluation> evaluations = evaluationsData.map<Evaluation>((eval) {
+          return Evaluation(
+            name: eval['nome'] ?? 'Avaliação sem nome',
+            date: eval['data'] ?? 'Data não disponível',
+            grade: eval['nota'] ?? '0.0',
+          );
+        }).toList();
+        return SubjectGrade(
+          subject: subjectData['subject'] ?? '',
+          professor: subjectData['professor'] ?? '',
+          evaluations: evaluations,
+        );
+      }).toList();
+
+      final box = await Hive.openBox<GradeData>('gradeBox');
+      if (subjectGrades.isEmpty) {
+        print("⚠️ Nenhuma disciplina encontrada para salvar.");
+        return;
+      }
+      await box.put('grades', GradeData(subjects: subjectGrades));
+      print("✅ Notas salvas com sucesso no Hive!");
+
+      if (mounted) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (context) => const HomeScreen()),
+        );
+      }
+    } catch (e) {
+      print("❌ Erro ao processar e salvar notas: $e");
+    }
+    print("⬅️ _processAndSaveGrades concluído");
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Login'),
-      ),
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          children: [
-            TextField(
-              controller: _usernameController,
-              decoration: const InputDecoration(labelText: 'Username'),
+      body: Stack(
+        children: [
+          WebViewWidget(controller: _controller),
+          if (_hideWebView)
+            Container(
+              color: Colors.white,
+              child: const Center(child: CircularProgressIndicator()),
             ),
-            TextField(
-              controller: _passwordController,
-              obscureText: true,
-              decoration: const InputDecoration(labelText: 'Password'),
-            ),
-            const SizedBox(height: 20),
-            _isLoading
-                ? const CircularProgressIndicator()
-                : ElevatedButton(
-                    onPressed: _login,
-                    child: const Text('Login'),
-                  ),
-          ],
-        ),
+        ],
       ),
     );
   }

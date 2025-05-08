@@ -17,7 +17,7 @@ class GradeDataAdapter extends TypeAdapter<GradeData> {
       for (int i = 0; i < numOfFields; i++) reader.readByte(): reader.read(),
     };
     return GradeData(
-      classGrades: (fields[0] as List).cast<ClassGrade>(),
+      subjects: (fields[0] as List).cast<SubjectGrade>(),
     );
   }
 
@@ -26,7 +26,7 @@ class GradeDataAdapter extends TypeAdapter<GradeData> {
     writer
       ..writeByte(1)
       ..writeByte(0)
-      ..write(obj.classGrades);
+      ..write(obj.subjects);
   }
 
   @override
@@ -40,29 +40,72 @@ class GradeDataAdapter extends TypeAdapter<GradeData> {
           typeId == other.typeId;
 }
 
-class ClassGradeAdapter extends TypeAdapter<ClassGrade> {
+class SubjectGradeAdapter extends TypeAdapter<SubjectGrade> {
   @override
   final int typeId = 6;
 
   @override
-  ClassGrade read(BinaryReader reader) {
+  SubjectGrade read(BinaryReader reader) {
     final numOfFields = reader.readByte();
     final fields = <int, dynamic>{
       for (int i = 0; i < numOfFields; i++) reader.readByte(): reader.read(),
     };
-    return ClassGrade(
-      className: fields[0] as String,
-      grade: fields[1] as String,
+    return SubjectGrade(
+      subject: fields[0] as String,
+      professor: fields[1] as String,
+      evaluations: (fields[2] as List).cast<Evaluation>(),
     );
   }
 
   @override
-  void write(BinaryWriter writer, ClassGrade obj) {
+  void write(BinaryWriter writer, SubjectGrade obj) {
     writer
-      ..writeByte(2)
+      ..writeByte(3)
       ..writeByte(0)
-      ..write(obj.className)
+      ..write(obj.subject)
       ..writeByte(1)
+      ..write(obj.professor)
+      ..writeByte(2)
+      ..write(obj.evaluations);
+  }
+
+  @override
+  int get hashCode => typeId.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is SubjectGradeAdapter &&
+          runtimeType == other.runtimeType &&
+          typeId == other.typeId;
+}
+
+class EvaluationAdapter extends TypeAdapter<Evaluation> {
+  @override
+  final int typeId = 7;
+
+  @override
+  Evaluation read(BinaryReader reader) {
+    final numOfFields = reader.readByte();
+    final fields = <int, dynamic>{
+      for (int i = 0; i < numOfFields; i++) reader.readByte(): reader.read(),
+    };
+    return Evaluation(
+      name: fields[0] as String,
+      date: fields[1] as String,
+      grade: fields[2] as String,
+    );
+  }
+
+  @override
+  void write(BinaryWriter writer, Evaluation obj) {
+    writer
+      ..writeByte(3)
+      ..writeByte(0)
+      ..write(obj.name)
+      ..writeByte(1)
+      ..write(obj.date)
+      ..writeByte(2)
       ..write(obj.grade);
   }
 
@@ -72,7 +115,7 @@ class ClassGradeAdapter extends TypeAdapter<ClassGrade> {
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      other is ClassGradeAdapter &&
+      other is EvaluationAdapter &&
           runtimeType == other.runtimeType &&
           typeId == other.typeId;
 }
